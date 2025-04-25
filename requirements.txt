@@ -1,0 +1,23 @@
+# requirements.txt
+
+# CLI e interfaces de usuário
+click
+rich
+
+# Integração com LLMs
+groq
+openai
+
+# Manipulação de configurações
+python-dotenv
+pydantic
+
+# Utilitários
+typing-extensions
+
+# Desenvolvimento e testes
+pytest
+black
+isort
+mypy
+pytest-cov
