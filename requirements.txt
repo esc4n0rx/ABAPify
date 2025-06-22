@@ -1,4 +1,3 @@
-# requirements.txt
 
 # CLI e interfaces de usuário
 click
@@ -7,6 +6,7 @@ rich
 # Integração com LLMs
 groq
 openai
+requests
 
 # Manipulação de configurações
 python-dotenv

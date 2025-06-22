@@ -2,12 +2,13 @@
 # -*- coding: utf-8 -*-
 
 """
-Cliente para comunicação com LLMs como Groq e OpenAI.
+Cliente para comunicação com LLMs como Arcee, Groq e OpenAI.
 """
 
 import os
 from typing import Dict, List, Optional, Union
 
+from abapify.llm.providers.arcee_provider import ArceeProvider
 from abapify.llm.providers.groq_provider import GroqProvider
 from abapify.llm.providers.openai_provider import OpenAIProvider
 from abapify.utils.exceptions import LLMProviderNotFoundError
@@ -22,6 +23,7 @@ class LLMClient:
     def __init__(self):
         """Inicializa o cliente LLM."""
         self._providers = {
+            "arcee": ArceeProvider(),
             "groq": GroqProvider(),
             "openai": OpenAIProvider(),
         }
@@ -30,19 +32,22 @@ class LLMClient:
     def _get_default_provider(self) -> str:
         """
         Determina o provedor padrão com base nas variáveis de ambiente disponíveis.
+        Prioridade: Arcee > Groq > OpenAI
 
         Returns:
             str: Nome do provedor padrão.
         """
-        if os.environ.get("GROQ_API_KEY"):
+        if os.environ.get("ARCEE_TOKEN"):
+            return "arcee"
+        elif os.environ.get("GROQ_API_KEY"):
             return "groq"
         elif os.environ.get("OPENAI_API_KEY"):
             return "openai"
         else:
             logger.warning(
-                "Nenhuma chave de API encontrada. Configure GROQ_API_KEY ou OPENAI_API_KEY."
+                "Nenhuma chave de API encontrada. Configure ARCEE_TOKEN, GROQ_API_KEY ou OPENAI_API_KEY."
             )
-            return "groq"  # Padrão para Groq
+            return "arcee"  # Padrão para Arcee
 
     def generate(
         self,

@@ -99,3 +99,46 @@ Inclua:
 
 Utilize ABAP moderno e boas práticas de teste unitário.
 """
+
+CUSTOM_PROGRAM_PROMPT_TEMPLATE = """
+Crie um programa ABAP completo baseado no seguinte resumo/especificação:
+
+ESPECIFICAÇÃO DO PROGRAMA:
+{specification}
+
+REQUISITOS TÉCNICOS:
+- Tipo de programa: {program_type}
+- Funcionalidades principais: {main_features}
+- Tabelas/Entidades envolvidas: {entities}
+- Integrações necessárias: {integrations}
+- Regras de negócio específicas: {business_rules}
+
+REQUISITOS NÃO FUNCIONAIS:
+- Performance: {performance_requirements}
+- Segurança: {security_requirements}
+- Usabilidade: {usability_requirements}
+
+Implemente um programa ABAP completo e funcional que atenda a todos os requisitos especificados.
+Inclua tela de seleção adequada, lógica de processamento robusta, tratamento de erros, 
+logging e documentação apropriada.
+
+O programa deve ser de qualidade produtiva e seguir todas as melhores práticas ABAP.
+"""
+
+ENHANCEMENT_PROMPT_TEMPLATE = """
+Crie uma melhoria/enhancement ABAP que:
+
+- Objeto base: {base_object}
+- Tipo de enhancement: {enhancement_type}
+- Funcionalidade a adicionar: {functionality}
+- Pontos de enhancement: {enhancement_points}
+
+Inclua:
+1. Implementação do enhancement
+2. Validações necessárias
+3. Tratamento de erros
+4. Documentação das alterações
+5. Testes de regressão considerados
+
+Utilize técnicas modernas de enhancement (BADIs, Enhancement Points, etc.).
+"""

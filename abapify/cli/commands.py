@@ -9,8 +9,11 @@ import os
 from typing import List, Optional, Tuple
 
 from rich.console import Console
+from rich.prompt import Prompt, Confirm
+from rich.panel import Panel
 
 from abapify.core.generator import AbapGenerator
+from abapify.utils.config import get_config_value
 from abapify.utils.logger import get_logger
 
 console = Console()
@@ -137,3 +140,105 @@ def generate_test(target: str, output_dir: str, filename: str) -> None:
     except Exception as e:
         logger.error(f"Erro ao gerar teste unitário ABAP: {str(e)}")
         console.print(f"[bold red]Erro ao gerar teste unitário ABAP:[/] {str(e)}")
+
+
+def generate_custom_program(output_dir: str, filename: Optional[str] = None) -> None:
+    """Gera um programa ABAP customizado com assistente interativo."""
+    try:
+        console.print(Panel.fit(
+            "[bold blue]Assistente de Programa Personalizado[/bold blue]",
+            border_style="blue"
+        ))
+        
+        # Coleta informações básicas
+        console.print("\n[cyan]Especificação do Programa:[/cyan]")
+        specification = Prompt.ask("Descrição detalhada do que o programa deve fazer")
+        
+        program_type = Prompt.ask(
+            "Tipo de programa",
+            choices=["Report", "Class", "Function Group", "Interface", "Enhancement"],
+            default="Report"
+        )
+        
+        # Funcionalidades principais
+        console.print(f"\n[cyan]Funcionalidades Principais:[/cyan]")
+        main_features = Prompt.ask("Liste as principais funcionalidades (separadas por vírgula)")
+        
+        # Entidades envolvidas
+        entities = Prompt.ask("Tabelas/Entidades envolvidas (separadas por vírgula)", default="")
+        
+        # Integrações
+        integrations = Prompt.ask("Integrações necessárias (APIs, RFCs, etc.)", default="Nenhuma")
+        
+        # Regras de negócio
+        business_rules = Prompt.ask("Regras de negócio específicas", default="")
+        
+        # Requisitos avançados (opcional)
+        advanced_config = Confirm.ask("\nDeseja configurar requisitos avançados?", default=False)
+        
+        performance_req = "Padrão"
+        security_req = "Verificações de autorização padrão"
+        usability_req = "Interface intuitiva"
+        
+        if advanced_config:
+            performance_req = Prompt.ask("Requisitos de performance", default="Padrão")
+            security_req = Prompt.ask("Requisitos de segurança", default="Verificações de autorização padrão")
+            usability_req = Prompt.ask("Requisitos de usabilidade", default="Interface intuitiva")
+        
+        # Gera nome do arquivo se não fornecido
+        if not filename:
+            safe_spec = specification.lower().replace(' ', '_')[:30]
+            filename = f"z_custom_{safe_spec}.abap"
+        
+        # Gera o código
+        console.print(f"\n[bold yellow]Gerando programa personalizado...[/bold yellow]")
+        
+        generator = AbapGenerator()
+        code = generator.generate_custom_program(
+            specification=specification,
+            program_type=program_type,
+            main_features=main_features,
+            entities=entities,
+            integrations=integrations,
+            business_rules=business_rules,
+            performance_requirements=performance_req,
+            security_requirements=security_req,
+            usability_requirements=usability_req,
+        )
+        
+        file_path = _save_code(code, output_dir, filename)
+        
+        console.print(f"\n[bold green]✅ Programa personalizado gerado com sucesso![/]")
+        console.print(f"[green]Arquivo:[/] {file_path}")
+        
+    except Exception as e:
+        logger.error(f"Erro ao gerar programa personalizado: {str(e)}")
+        console.print(f"[bold red]Erro ao gerar programa personalizado:[/] {str(e)}")
+
+
+def generate_enhancement(
+    base_object: str, 
+    enhancement_type: str, 
+    functionality: str, 
+    output_dir: str, 
+    filename: str,
+    enhancement_points: str = ""
+) -> None:
+    """Gera um enhancement ABAP."""
+    try:
+        console.print(f"[bold green]Gerando enhancement ABAP:[/] {enhancement_type}")
+        
+        generator = AbapGenerator()
+        code = generator.generate_enhancement(
+            base_object=base_object,
+            enhancement_type=enhancement_type,
+            functionality=functionality,
+            enhancement_points=enhancement_points,
+        )
+        
+        file_path = _save_code(code, output_dir, filename)
+        
+        console.print(f"[bold green]Código gerado com sucesso:[/] {file_path}")
+    except Exception as e:
+        logger.error(f"Erro ao gerar enhancement ABAP: {str(e)}")
+        console.print(f"[bold red]Erro ao gerar enhancement ABAP:[/] {str(e)}")
