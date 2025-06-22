@@ -22,23 +22,56 @@ from abapify.prompts.user_prompts import (
 from abapify.utils.config import get_config_value
 from abapify.utils.logger import get_logger
 
+# Importações SAP (opcionais)
+try:
+    from abapify.sap import SAPConnection, MetadataAnalyzer
+    from abapify.sap.models import SAPAnalysisResult
+    SAP_INTEGRATION_AVAILABLE = True
+except ImportError:
+    SAP_INTEGRATION_AVAILABLE = False
+
 logger = get_logger(__name__)
 
 
 class AbapGenerator:
     """Gerador de código ABAP usando modelos de linguagem."""
 
-    def __init__(self, model_name: Optional[str] = None, use_enhanced_prompts: bool = True):
+    def __init__(self, model_name: Optional[str] = None, use_enhanced_prompts: bool = True,
+                 sap_environment: Optional[str] = None, enable_sap_analysis: bool = False):
         """
         Inicializa o gerador de código ABAP.
 
         Args:
             model_name: Nome do modelo a ser utilizado (opcional).
             use_enhanced_prompts: Se deve usar prompts aprimorados (padrão: True).
+            sap_environment: Ambiente SAP para análise (opcional).
+            enable_sap_analysis: Se deve habilitar análise SAP automática.
         """
         self.llm_client = LLMClient()
         self.model_name = model_name
         self.system_prompt = ENHANCED_SYSTEM_PROMPT if use_enhanced_prompts else SIMPLE_SYSTEM_PROMPT
+        
+        # Configuração SAP
+        self.sap_environment = sap_environment or get_config_value("SAP_DEFAULT_ENVIRONMENT", "DEV")
+        self.enable_sap_analysis = enable_sap_analysis and SAP_INTEGRATION_AVAILABLE
+        self.sap_connection: Optional[SAPConnection] = None
+        self.metadata_analyzer: Optional[MetadataAnalyzer] = None
+        
+        if self.enable_sap_analysis:
+            self._initialize_sap_connection()
+
+    def _initialize_sap_connection(self) -> None:
+        """Inicializa conexão SAP se habilitada."""
+        try:
+            if SAP_INTEGRATION_AVAILABLE:
+                self.sap_connection = SAPConnection(environment=self.sap_environment)
+                self.metadata_analyzer = MetadataAnalyzer(self.sap_connection)
+                logger.info(f"Conexão SAP inicializada para ambiente: {self.sap_environment}")
+            else:
+                logger.warning("Integração SAP não disponível - módulo sap não encontrado")
+        except Exception as e:
+            logger.error(f"Erro ao inicializar conexão SAP: {str(e)}")
+            self.enable_sap_analysis = False
 
     def _generate_code(self, prompt: str, temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> str:
         """
@@ -69,6 +102,133 @@ class AbapGenerator:
             logger.error(f"Erro ao gerar código: {str(e)}")
             raise
 
+    def _enrich_prompt_with_sap_context(self, base_prompt: str, tables: List[str]) -> str:
+        """
+        Enriquece prompt com contexto SAP.
+        
+        Args:
+            base_prompt: Prompt base.
+            tables: Lista de tabelas mencionadas.
+            
+        Returns:
+            Prompt enriquecido com contexto SAP.
+        """
+        if not self.enable_sap_analysis or not tables:
+            return base_prompt
+        
+        try:
+            logger.info(f"Enriquecendo prompt com análise SAP das tabelas: {tables}")
+            
+            # Analisa tabelas no SAP
+            analysis_result = self.metadata_analyzer.generate_full_analysis(
+                tables, include_custom_objects=True
+            )
+            
+            # Constrói contexto SAP
+            sap_context = self._build_sap_context(analysis_result)
+            
+            # Enriquece o prompt
+            enriched_prompt = f"""
+{base_prompt}
+
+CONTEXTO SAP ANALISADO AUTOMATICAMENTE:
+{sap_context}
+
+INSTRUÇÕES ADICIONAIS BASEADAS NA ANÁLISE SAP:
+- Use a estrutura real das tabelas analisadas
+- Considere os relacionamentos identificados para JOINs otimizados
+- Siga os padrões de nomenclatura detectados na empresa
+- Implemente as melhores práticas baseadas nos objetos customizados existentes
+- Otimize performance considerando índices e campos chave identificados
+"""
+            
+            logger.info("Prompt enriquecido com contexto SAP")
+            return enriched_prompt
+            
+        except Exception as e:
+            logger.error(f"Erro ao enriquecer prompt com contexto SAP: {str(e)}")
+            return base_prompt
+
+    def _build_sap_context(self, analysis_result: "SAPAnalysisResult") -> str:
+        """
+        Constrói contexto SAP para inclusão no prompt.
+        
+        Args:
+            analysis_result: Resultado da análise SAP.
+            
+        Returns:
+            Contexto formatado para o prompt.
+        """
+        context_parts = []
+        
+        # Informações das tabelas
+        context_parts.append("ESTRUTURAS DE TABELAS ANALISADAS:")
+        for table in analysis_result.tables:
+            context_parts.append(f"\nTabela {table.name}:")
+            context_parts.append(f"  Descrição: {table.description}")
+            
+            # Campos chave
+            key_fields = [f.name for f in table.fields if f.key_field]
+            if key_fields:
+                context_parts.append(f"  Campos chave: {', '.join(key_fields)}")
+            
+            # Campos importantes (primeiros 8 não-chave)
+            important_fields = [f.name for f in table.fields if not f.key_field][:8]
+            if important_fields:
+                context_parts.append(f"  Campos principais: {', '.join(important_fields)}")
+            
+            # Informações de tipo
+            data_types = {}
+            for field in table.fields:
+                if field.data_type not in data_types:
+                    data_types[field.data_type] = []
+                data_types[field.data_type].append(field.name)
+            
+            # Mostra tipos mais comuns
+            for dtype, fields in list(data_types.items())[:3]:
+                context_parts.append(f"  Campos {dtype}: {', '.join(fields[:5])}")
+        
+        # Relacionamentos
+        if analysis_result.relationships:
+            context_parts.append(f"\nRELACIONAMENTOS IDENTIFICADOS ({len(analysis_result.relationships)}):")
+            for rel in analysis_result.relationships[:8]:  # Limita para não sobrecarregar
+                context_parts.append(f"  {rel.from_table}.{', '.join(rel.from_fields)} → {rel.to_table}.{', '.join(rel.to_fields)}")
+        
+        # Padrões da empresa
+        if analysis_result.patterns:
+            context_parts.append("\nPADRÕES DA EMPRESA DETECTADOS:")
+            
+            # Prefixos mais comuns
+            if 'prefixes' in analysis_result.patterns:
+                prefixes = analysis_result.patterns['prefixes']
+                if prefixes:
+                    top_prefixes = sorted(prefixes.items(), key=lambda x: x[1], reverse=True)[:3]
+                    context_parts.append(f"  Prefixos mais usados: {', '.join([f'{p[0]} ({p[1]}x)' for p in top_prefixes])}")
+            
+            # Sufixos por tipo de objeto
+            if 'suffixes' in analysis_result.patterns:
+                for obj_type, suffixes in analysis_result.patterns['suffixes'].items():
+                    if suffixes:
+                        top_suffix = max(suffixes.items(), key=lambda x: x[1])
+                        context_parts.append(f"  Sufixo comum para {obj_type}: {top_suffix[0]}")
+            
+            # Pacotes utilizados
+            if 'package_patterns' in analysis_result.patterns:
+                packages = list(analysis_result.patterns['package_patterns'].keys())[:3]
+                if packages:
+                    context_parts.append(f"  Pacotes principais: {', '.join(packages)}")
+        
+        # Objetos customizados similares
+        if analysis_result.custom_objects:
+            similar_objects = [obj for obj in analysis_result.custom_objects 
+                             if any(table.name.startswith(obj.name[:4]) for table in analysis_result.tables)][:3]
+            if similar_objects:
+                context_parts.append(f"\nOBJETOS CUSTOMIZADOS SIMILARES:")
+                for obj in similar_objects:
+                    context_parts.append(f"  {obj.name} ({obj.object_type}): {obj.description}")
+        
+        return "\n".join(context_parts)
+
     def generate_alv(self, description: str, tables: List[str]) -> str:
         """
         Gera um relatório ALV.
@@ -83,6 +243,11 @@ class AbapGenerator:
         prompt = ALV_PROMPT_TEMPLATE.format(
             description=description, tables=", ".join(tables)
         )
+        
+        # Enriquece com contexto SAP se habilitado
+        if self.enable_sap_analysis:
+            prompt = self._enrich_prompt_with_sap_context(prompt, tables)
+        
         logger.info(f"Gerando relatório ALV: {description}")
         return self._generate_code(prompt)
 
@@ -100,6 +265,11 @@ class AbapGenerator:
         prompt = REPORT_PROMPT_TEMPLATE.format(
             description=description, tables=", ".join(tables)
         )
+        
+        # Enriquece com contexto SAP se habilitado
+        if self.enable_sap_analysis:
+            prompt = self._enrich_prompt_with_sap_context(prompt, tables)
+        
         logger.info(f"Gerando relatório: {description}")
         return self._generate_code(prompt)
 
@@ -208,6 +378,12 @@ class AbapGenerator:
             security_requirements=security_requirements,
             usability_requirements=usability_requirements,
         )
+        
+        # Se entidades/tabelas foram especificadas, enriquece com contexto SAP
+        if self.enable_sap_analysis and entities:
+            table_names = [t.strip() for t in entities.split(',') if t.strip()]
+            prompt = self._enrich_prompt_with_sap_context(prompt, table_names)
+        
         logger.info(f"Gerando programa customizado: {program_type}")
         return self._generate_code(prompt, temperature=0.8, max_tokens=8192)
 
@@ -238,3 +414,16 @@ class AbapGenerator:
         )
         logger.info(f"Gerando enhancement: {enhancement_type} para {base_object}")
         return self._generate_code(prompt)
+
+    def close_sap_connection(self) -> None:
+        """Encerra conexão SAP se ativa."""
+        if self.sap_connection:
+            self.sap_connection.close()
+            logger.info("Conexão SAP encerrada")
+
+    def __del__(self):
+        """Destrutor para garantir limpeza da conexão SAP."""
+        try:
+            self.close_sap_connection()
+        except Exception:
+            pass  # Ignora erros no destrutor

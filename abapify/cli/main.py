@@ -78,12 +78,39 @@ main.add_command(config)
     "-f",
     help="Nome do arquivo de saída (sem extensão)",
 )
+@click.option(
+    "--sap-environment",
+    type=click.Choice(["DEV", "QAS", "PRD"]),
+    help="Ambiente SAP para análise de metadados",
+)
+@click.option(
+    "--analyze-tables",
+    is_flag=True,
+    help="Analisa automaticamente as tabelas no SAP",
+)
 def alv_command(
-    description: str, tables: tuple[str, ...], output: str, filename: Optional[str]
+    description: str, 
+    tables: tuple[str, ...], 
+    output: str, 
+    filename: Optional[str],
+    sap_environment: Optional[str],
+    analyze_tables: bool
 ):
     """Gera um relatório ALV com base na descrição fornecida."""
     filename = filename or f"z_alv_{description.lower().replace(' ', '_')[:20]}.abap"
-    generate_alv(description, tables, output, filename)
+    
+    # Se análise SAP está habilitada, usa geração SAP-aware
+    if analyze_tables and tables:
+        from abapify.cli.sap_commands import generate_sap_aware_alv
+        generate_sap_aware_alv(
+            description=description,
+            tables=list(tables),
+            output_dir=output,
+            filename=filename,
+            sap_environment=sap_environment or "DEV"
+        )
+    else:
+        generate_alv(description, tables, output, filename)
 
 
 @main.command("generate-report")
@@ -110,12 +137,39 @@ def alv_command(
     "-f",
     help="Nome do arquivo de saída (sem extensão)",
 )
+@click.option(
+    "--sap-environment",
+    type=click.Choice(["DEV", "QAS", "PRD"]),
+    help="Ambiente SAP para análise de metadados",
+)
+@click.option(
+    "--analyze-tables",
+    is_flag=True,
+    help="Analisa automaticamente as tabelas no SAP",
+)
 def report_command(
-    description: str, tables: tuple[str, ...], output: str, filename: Optional[str]
+    description: str, 
+    tables: tuple[str, ...], 
+    output: str, 
+    filename: Optional[str],
+    sap_environment: Optional[str],
+    analyze_tables: bool
 ):
     """Gera um relatório ABAP com base na descrição fornecida."""
     filename = filename or f"z_report_{description.lower().replace(' ', '_')[:20]}.abap"
-    generate_report(description, tables, output, filename)
+    
+    # Se análise SAP está habilitada, usa geração SAP-aware
+    if analyze_tables and tables:
+        from abapify.cli.sap_commands import generate_sap_aware_report
+        generate_sap_aware_report(
+            description=description,
+            tables=list(tables),
+            output_dir=output,
+            filename=filename,
+            sap_environment=sap_environment or "DEV"
+        )
+    else:
+        generate_report(description, tables, output, filename)
 
 
 @main.command("generate-class")
@@ -308,6 +362,103 @@ def enhancement_command(
         output_dir=output,
         filename=filename,
         enhancement_points=enhancement_points or "",
+    )
+
+
+# Novos comandos SAP
+@main.command("analyze-table")
+@click.option(
+    "--table-name",
+    "-t",
+    required=True,
+    help="Nome da tabela a ser analisada",
+)
+@click.option(
+    "--environment",
+    "-e",
+    type=click.Choice(["DEV", "QAS", "PRD"]),
+    help="Ambiente SAP",
+)
+@click.option(
+    "--include-relationships",
+    is_flag=True,
+    help="Incluir análise de relacionamentos",
+)
+@click.option(
+    "--output",
+    "-o",
+    help="Arquivo de saída para salvar análise (JSON)",
+)
+def analyze_table_command(
+    table_name: str,
+    environment: Optional[str],
+    include_relationships: bool,
+    output: Optional[str]
+):
+    """Analisa estrutura de uma tabela SAP."""
+    from abapify.cli.sap_commands import analyze_table_structure
+    analyze_table_structure(
+        table_name=table_name,
+        environment=environment or "DEV",
+        include_relationships=include_relationships,
+        output_file=output
+    )
+
+
+@main.command("sap-generate")
+@click.option(
+    "--type",
+    "-t",
+    required=True,
+    type=click.Choice(["alv", "report", "class"]),
+    help="Tipo de código a gerar",
+)
+@click.option(
+    "--description",
+    "-d",
+    required=True,
+    help="Descrição do código a ser gerado",
+)
+@click.option(
+    "--tables",
+    "-tb",
+    multiple=True,
+    help="Tabelas a serem utilizadas",
+)
+@click.option(
+    "--environment",
+    "-e",
+    type=click.Choice(["DEV", "QAS", "PRD"]),
+    help="Ambiente SAP para análise",
+)
+@click.option(
+    "--output",
+    "-o",
+    default="./output",
+    help="Diretório de saída",
+)
+@click.option(
+    "--filename",
+    "-f",
+    help="Nome do arquivo de saída",
+)
+def sap_generate_command(
+    type: str,
+    description: str,
+    tables: tuple[str, ...],
+    environment: Optional[str],
+    output: str,
+    filename: Optional[str]
+):
+    """Gera código ABAP com análise automática SAP."""
+    from abapify.cli.sap_commands import generate_sap_aware_code
+    generate_sap_aware_code(
+        code_type=type,
+        description=description,
+        tables=list(tables),
+        output_dir=output,
+        filename=filename,
+        sap_environment=environment or "DEV"
     )
 
 
